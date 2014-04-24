@@ -10,5 +10,5 @@
 #include <string.h>
 #include <errno.h>
 #include <io.h>
-
+#include <omp.h>
 #endif

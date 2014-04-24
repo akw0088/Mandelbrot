@@ -43,7 +43,7 @@ void draw_pixels(HDC hdc, HDC hdcMem, int width, int height)
 	hBitmap = CreateCompatibleBitmap(hdc, width, height);
 	SetBitmapBits(hBitmap, sizeof(int) * width * height, pixel);
 	hdcMem = CreateCompatibleDC(hdc);
-	hOldBitmap = SelectObject(hdcMem, hBitmap);
+	hOldBitmap = (HBITMAP)SelectObject(hdcMem, hBitmap);
 	// This scaling is a little strange because Stretch maintains aspect ratios
 	StretchBlt(hdc, 0, 0, cxClient, cyClient, hdcMem, 0, 0, width, height, SRCCOPY);
 	SelectObject(hdcMem, hOldBitmap);
@@ -104,7 +104,7 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	HDC		hdc;
 	PAINTSTRUCT	ps;
 	int		i;
-
+	static char frame_time[80] = "";
 
      
 	switch (message)
@@ -120,27 +120,34 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 		xres = abs(mi.rcMonitor.right - mi.rcMonitor.left);
 		yres = abs(mi.rcMonitor.bottom - mi.rcMonitor.top);
 
-		pixel = malloc(sizeof(int) * xres * yres);
+		pixel = (int *)malloc(sizeof(int) * xres * yres);
 		SetTimer(hwnd, WM_TICK, 16, NULL);
 
 		return 0;
 	}
 	case WM_TIMER:
 	{ 
-		float pr, pi;
-		float newRe, newIm, oldRe, oldIm;
 		static float zoom = 1;
 		static float moveX = -0.75;
 		static float moveY = 0.5;
-		int color;
-		int maxIterations = 128;
 
 		int width = cxClient;
 		int height = cyClient;
+		int start, end;
 
+		start = GetTickCount();
+
+
+
+	#pragma omp parallel num_threads(8)
+	{
+		#pragma omp for
         	for(int y = 0; y < height; y++)
         	for(int x = 0; x < width; x++)
         	{
+			float pr, pi;
+			float newRe, newIm, oldRe, oldIm;
+			int maxIterations = 128;
 	   		int i;
 
          		//calculate the initial real and imaginary part of z, based on the pixel location and zoom and position values
@@ -170,6 +177,11 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			pixel[y * width + x] = HsvToRgb(1, i, (i < maxIterations));
         	}
+	}
+		end = GetTickCount();
+
+		sprintf(frame_time, "%d ms", end - start);
+
 
 		zoom += 0.1f;
 		if (pixel[(height >> 1) * width + (width >> 1)] != 0)
@@ -201,6 +213,7 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_PAINT:
 		hdc = BeginPaint (hwnd, &ps);
 		draw_pixels(hdc, hdcMem, cxClient, cyClient);
+		DrawText(hdc, frame_time, strlen(frame_time), &rect, 0);
 		EndPaint(hwnd, &ps);
 		return 0;
 	     
